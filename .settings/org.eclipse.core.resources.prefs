@@ -1,0 +1,9 @@
+eclipse.preferences.version=1
+encoding//src/os/Main.java=UTF-8
+encoding//src/os/interpreter/Interpreter.java=UTF-8
+encoding//src/os/interpreter/ProgramLoader.java=UTF-8
+encoding//src/os/memory/Memory.java=UTF-8
+encoding//src/os/memory/MemoryWord.java=UTF-8
+encoding//src/os/mutex/MutexManager.java=UTF-8
+encoding//src/os/scheduler/Scheduler.java=UTF-8
+encoding//src/os/syscall/SystemCalls.java=UTF-8
