@@ -1,6 +1,6 @@
 # OS Simulator
 
-An academic operating systems simulator written in Java. The project models process loading, memory allocation, swapping, mutex-based blocking, and multiple CPU scheduling algorithms.
+An academic operating systems simulator written in Java. The project models process loading, memory allocation, swapping, mutex-based blocking, and multiple CPU scheduling algorithms, with both a console simulation and a visual Swing interface.
 
 ## Features
 
@@ -11,6 +11,11 @@ An academic operating systems simulator written in Java. The project models proc
 - Swapping processes to and from disk when memory is full
 - Simple process control blocks stored in simulated memory
 - Mutex support for blocking and unblocking processes
+- Visual GUI with:
+  - clock-by-clock playback
+  - ready, blocked, memory, and swap panels
+  - process state cards
+  - play, pause, previous-step, next-step, and reset controls
 - Basic system calls for:
   - printing output
   - reading and writing files
@@ -20,6 +25,7 @@ An academic operating systems simulator written in Java. The project models proc
 ## Project Layout
 
 - `src/os/Main.java` - simulation entry point
+- `src/os/gui/SimulatorGUI.java` - visual simulator interface
 - `src/os/scheduler/` - scheduling algorithms and queue logic
 - `src/os/memory/` - simulated memory and swap support
 - `src/os/mutex/` - mutex and blocked-process handling
@@ -52,11 +58,18 @@ java -cp bin os.Main RR q=2
 java -cp bin os.Main MLFQ
 ```
 
+To launch the visual GUI:
+
+```bash
+java -cp bin os.gui.SimulatorGUI
+```
+
 ### Option 2: Run from Eclipse
 
 1. Import the project as an existing Java project.
 2. Make sure the working directory is the project root so the sample `Program*.txt` files can be found.
 3. Run `os.Main`.
+4. Or run `os.gui.SimulatorGUI` for the visual interface.
 
 ## Scheduler Options
 
@@ -72,6 +85,7 @@ If no argument is provided, the simulator defaults to `HRRN`.
 - The simulator expects the sample program text files to be present in the working directory.
 - During execution, the simulator may create swap-related disk images in the project folder.
 - The included `bin/` directory contains compiled classes from the original project, but it is not required if you rebuild locally.
+- The GUI can step through the recorded execution trace after a run and show memory, queues, and swap activity per clock.
 
 ## License
 
