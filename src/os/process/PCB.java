@@ -23,7 +23,7 @@ public class PCB {
         this.mlfqLevel        = 0;
     }
 
-    // Ensure both bounds are valid
+    // make sure bounds are valid
     public boolean isInMemory() {
         return memoryLowerBound != -1 && memoryUpperBound != -1;
     }

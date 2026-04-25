@@ -61,7 +61,7 @@ public class Main {
         } else {
             System.out.println("Scheduler: " + algorithm);
         }
-
+      //handling the clock
         while (clock < MAX_CLOCK_CYCLES) {
 
             System.out.println("\n>>> CLOCK: " + clock + " <<<");
@@ -186,7 +186,7 @@ public class Main {
             }
         }
     }
-
+  //loading process
     private static Process loadProcess(String fileName,
                                        int processId,
                                        int arrivalTime,
@@ -218,7 +218,7 @@ public class Main {
         process.pcb.mlfqLevel = 0;
         return process;
     }
-
+  //el ba3do
     private static Process dispatchNextProcess(List<Process> allProcesses,
                                                Queue<Process> rrReadyQueue,
                                                List<Queue<Process>> mlfqQueues,
@@ -272,7 +272,7 @@ public class Main {
             swapOutProcess(victim, rrReadyQueue, mlfqQueues);
         }
     }
-
+  //switching
     private static void swapOutProcess(Process victim,
                                        Queue<Process> rrReadyQueue,
                                        List<Queue<Process>> mlfqQueues) {
@@ -356,7 +356,7 @@ public class Main {
             queue.remove(process);
         }
     }
-
+//printing
     private static void printSchedulingEvent(String event,
                                              List<Process> allProcesses,
                                              Queue<Process> rrReadyQueue,

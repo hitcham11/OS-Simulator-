@@ -33,7 +33,7 @@ public class Memory {
     private boolean isValid(int index) {
         return index >= 0 && index < TOTAL_WORDS;
     }
-
+//memory allocation
     public int allocate(int size) {
         for (int i = 0; i <= TOTAL_WORDS - size; i++) {
             boolean fits = true;

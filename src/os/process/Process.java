@@ -10,7 +10,7 @@ public class Process {
     // Number of instructions
     public int codeSize;
 
-    // Total memory size (code + vars + PCB)
+    // Total memory size (code+vars+PCB)
     public int processSize;
 
     public Process(int id, int arrivalTime, int lower, int upper, int burstTime, int codeSize) {

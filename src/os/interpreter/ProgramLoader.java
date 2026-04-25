@@ -22,33 +22,32 @@ public class ProgramLoader {
             return null;
         }
 
-        // ================= MEMORY SIZE CALCULATION =================
-        // Number of instructions in the program
+        //MEMORY SIZE CALCULATION
+        // no. of instructions fl the program
         int codeSize = rawLines.size();
 
-        // Total required memory:
-        // [instructions] + [3 variables] + [4 PCB fields]
+        //total required memory
+        //instructions+3 variables+4 PCB fields
         int size = codeSize + 3 + 4;
 
         Memory memory = Memory.getInstance();
 
-        // ================= MEMORY ALLOCATION =================
-        // Allocate a contiguous block of memory
+        //MEMORY ALLOC
+        // Allocate block of memory gambaha
         int lower = memory.allocate(size);
 
-        // Do NOT handle swapping here → responsibility of Main/Scheduler
         if (lower == -1) {
-            System.out.println("Memory Full → cannot load P" + processID);
+            System.out.println("Memory Full -> cannot load P" + processID);
             return null;
         }
 
-        // Calculate upper memory bound
+        // calc upper memory bound
         int upper = lower + size - 1;
 
-        // Burst time equals number of instructions (used by scheduler)
+        // Burst time = num of instructions (bta3 el scheduler)
         int burstTime = codeSize;
 
-        // ================= PROCESS CREATION =================
+        //PROCESS CREATION
         Process p = new Process(
                 processID,
                 arrivalTime,
@@ -58,8 +57,8 @@ public class ProgramLoader {
                 codeSize
         );
 
-        // ================= LOAD INSTRUCTIONS =================
-        // Write each instruction into allocated memory space
+        //LOAD INSTRUCTIONS
+        // Write each instruction gowa el allocated memory space
         for (int i = 0; i < codeSize; i++) {
             memory.writeCodeLine(
                     processID,
@@ -70,12 +69,12 @@ public class ProgramLoader {
             );
         }
 
-        // ================= INITIALIZE PCB =================
-        // Store process control block in memory
+        //INITIALIZE PCB
+        //Store process control block fl memory
         memory.writePCB(
                 processID,
                 "READY",   // initial state
-                0,         // program counter starts at 0
+                0,         // byebtedy 3and el 0
                 lower,
                 upper,
                 codeSize

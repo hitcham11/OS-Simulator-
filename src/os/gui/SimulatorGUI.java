@@ -19,6 +19,7 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JEditorPane;
+import javax.swing.Timer;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
@@ -33,7 +34,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class SimulatorGUI extends JFrame {
 
@@ -71,6 +77,21 @@ public class SimulatorGUI extends JFrame {
     private final JLabel outputCountValue = new JLabel("0");
     private final JLabel swapCountValue = new JLabel("0");
     private final JLabel finishCountValue = new JLabel("0");
+    private final JLabel currentClockValue = new JLabel("Not started");
+    private final JLabel runningProcessValue = new JLabel("None");
+    private final JTextArea readyQueueArea = new JTextArea();
+    private final JTextArea blockedQueueArea = new JTextArea();
+    private final JTextArea swapArea = new JTextArea();
+    private final JTextArea memoryFrameArea = new JTextArea();
+    private final JTextArea frameTraceArea = new JTextArea();
+    private final JButton playPauseButton = new JButton("Play");
+    private final JButton nextStepButton = new JButton("Next Step");
+    private final JButton previousStepButton = new JButton("Previous Step");
+    private final JButton resetViewButton = new JButton("Reset View");
+    private final Map<String, JLabel> processStateLabels = new LinkedHashMap<String, JLabel>();
+    private final List<ClockFrame> frames = new ArrayList<ClockFrame>();
+    private int currentFrameIndex = -1;
+    private Timer playbackTimer;
 
     public SimulatorGUI() {
         super("GUC Operating Systems Simulator");
@@ -99,6 +120,17 @@ public class SimulatorGUI extends JFrame {
         guideArea.setForeground(TEXT);
         guideArea.setMargin(new java.awt.Insets(18, 18, 18, 18));
         guideArea.setText(buildGuideText());
+        configureReadOnlyArea(readyQueueArea, 13, true);
+        configureReadOnlyArea(blockedQueueArea, 13, true);
+        configureReadOnlyArea(swapArea, 12, true);
+        configureReadOnlyArea(memoryFrameArea, 12, false);
+        configureReadOnlyArea(frameTraceArea, 12, true);
+        currentClockValue.setFont(new Font("Georgia", Font.BOLD, 22));
+        currentClockValue.setForeground(TEXT);
+        runningProcessValue.setFont(new Font("Georgia", Font.BOLD, 22));
+        runningProcessValue.setForeground(GERMANY_RED);
+        playbackTimer = new Timer(1200, event -> advanceFrame());
+        playbackTimer.setRepeats(true);
 
         JPanel root = new JPanel(new BorderLayout(16, 16));
         root.setBackground(PAGE);
@@ -109,6 +141,7 @@ public class SimulatorGUI extends JFrame {
 
         setContentPane(root);
         refreshQuantumFieldState();
+        clearFrameViews();
     }
 
     private void installLookAndFeel() {
@@ -216,7 +249,7 @@ public class SimulatorGUI extends JFrame {
         JPanel right = new JPanel(new BorderLayout(14, 14));
         right.setOpaque(false);
         right.add(buildMetricsPanel(), BorderLayout.NORTH);
-        right.add(buildOutputPanel(), BorderLayout.CENTER);
+        right.add(buildVisualizationTabs(), BorderLayout.CENTER);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
         splitPane.setResizeWeight(0.33);
@@ -346,7 +379,9 @@ public class SimulatorGUI extends JFrame {
         rrDemoButton.addActionListener(event -> loadRrPreset());
         mlfqDemoButton.addActionListener(event -> loadMlfqPreset());
         clearButton.addActionListener(event -> {
+            stopPlayback();
             outputArea.setText("");
+            clearFrameViews();
             updateSummary("Idle", "0", "0", "0");
         });
 
@@ -413,6 +448,77 @@ public class SimulatorGUI extends JFrame {
         return panel;
     }
 
+    private JComponent buildVisualizationTabs() {
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        tabs.addTab("System View", buildSystemViewPanel());
+        tabs.addTab("Simulation Trace", buildOutputPanel());
+        return tabs;
+    }
+
+    private JComponent buildSystemViewPanel() {
+        JPanel panel = createSectionPanel("Clock-By-Clock View", "Visual display of queues, running process, memory, swapping, and state changes.");
+
+        styleSecondaryButton(previousStepButton);
+        styleAccentButton(playPauseButton, GERMANY_GOLD);
+        styleSecondaryButton(nextStepButton);
+        styleSecondaryButton(resetViewButton);
+
+        playPauseButton.addActionListener(event -> togglePlayback());
+        nextStepButton.addActionListener(event -> stepForward());
+        previousStepButton.addActionListener(event -> stepBackward());
+        resetViewButton.addActionListener(event -> resetFrameView());
+
+        JPanel topSummary = new JPanel(new GridLayout(1, 2, 12, 12));
+        topSummary.setOpaque(false);
+        topSummary.add(metricCard("Current Clock", currentClockValue));
+        topSummary.add(metricCard("Running Process", runningProcessValue));
+
+        JPanel queueGrid = new JPanel(new GridLayout(1, 3, 10, 10));
+        queueGrid.setOpaque(false);
+        queueGrid.add(infoPanel("Ready Queues", readyQueueArea));
+        queueGrid.add(infoPanel("Blocked / Resource Queues", blockedQueueArea));
+        queueGrid.add(infoPanel("Swap / Disk Activity", swapArea));
+
+        JPanel processGrid = new JPanel(new GridLayout(1, 3, 10, 10));
+        processGrid.setOpaque(false);
+        processGrid.add(processStateCard("P1"));
+        processGrid.add(processStateCard("P2"));
+        processGrid.add(processStateCard("P3"));
+
+        JPanel controls = new JPanel(new GridLayout(1, 4, 10, 10));
+        controls.setOpaque(false);
+        controls.add(previousStepButton);
+        controls.add(playPauseButton);
+        controls.add(nextStepButton);
+        controls.add(resetViewButton);
+
+        JSplitPane lowerSplit = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT,
+                infoPanel("Memory Contents", memoryFrameArea),
+                infoPanel("Current Clock Trace", frameTraceArea)
+        );
+        lowerSplit.setResizeWeight(0.55);
+        lowerSplit.setDividerSize(10);
+        lowerSplit.setBorder(null);
+
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.add(topSummary);
+        content.add(Box.createVerticalStrut(10));
+        content.add(queueGrid);
+        content.add(Box.createVerticalStrut(10));
+        content.add(processGrid);
+        content.add(Box.createVerticalStrut(10));
+        content.add(controls);
+        content.add(Box.createVerticalStrut(10));
+        content.add(lowerSplit);
+
+        panel.add(content, BorderLayout.CENTER);
+        return panel;
+    }
+
     private JScrollPane wrapScroll(JComponent component) {
         JScrollPane scrollPane = new JScrollPane(component);
         scrollPane.getVerticalScrollBar().setUnitIncrement(18);
@@ -420,6 +526,54 @@ public class SimulatorGUI extends JFrame {
         scrollPane.setBorder(BorderFactory.createLineBorder(LINE, 1));
         scrollPane.getViewport().setBackground(PANEL);
         return scrollPane;
+    }
+
+    private void configureReadOnlyArea(JTextArea area, int fontSize, boolean lineWrap) {
+        area.setEditable(false);
+        area.setLineWrap(lineWrap);
+        area.setWrapStyleWord(lineWrap);
+        area.setFont(new Font("Consolas", Font.PLAIN, fontSize));
+        area.setBackground(new Color(250, 248, 243));
+        area.setForeground(TEXT);
+        area.setMargin(new Insets(12, 12, 12, 12));
+    }
+
+    private JPanel infoPanel(String title, JTextArea area) {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setOpaque(false);
+
+        JLabel label = new JLabel(title);
+        label.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        label.setForeground(TEXT);
+
+        panel.add(label, BorderLayout.NORTH);
+        panel.add(wrapScroll(area), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel processStateCard(String processName) {
+        JPanel card = new JPanel(new BorderLayout(8, 8));
+        card.setBackground(PANEL_ALT);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(225, 218, 206), 1),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12)
+        ));
+
+        JLabel title = new JLabel(processName);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        title.setForeground(TEXT);
+
+        JLabel state = new JLabel("NOT ARRIVED");
+        state.setOpaque(true);
+        state.setHorizontalAlignment(JLabel.CENTER);
+        state.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        state.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        applyStateStyle(state, "NOT ARRIVED");
+        processStateLabels.put(processName, state);
+
+        card.add(title, BorderLayout.NORTH);
+        card.add(state, BorderLayout.CENTER);
+        return card;
     }
 
     private JPanel createSectionPanel(String title, String subtitle) {
@@ -644,9 +798,11 @@ public class SimulatorGUI extends JFrame {
                     String result = get();
                     outputArea.setText(result);
                     outputArea.setCaretPosition(0);
+                    loadFramesFromOutput(result);
                     updateMetrics(result, algorithm);
                 } catch (Exception exception) {
                     outputArea.setText("Failed to run simulation.\n" + exception.getMessage());
+                    clearFrameViews();
                     updateSummary("Failed", "0", "0", "0");
                 } finally {
                     runButton.setEnabled(true);
@@ -691,6 +847,278 @@ public class SimulatorGUI extends JFrame {
         return count;
     }
 
+    private void loadFramesFromOutput(String output) {
+        stopPlayback();
+        frames.clear();
+
+        if (output == null || output.trim().isEmpty()) {
+            clearFrameViews();
+            return;
+        }
+
+        String[] lines = output.split("\\R");
+        List<String> currentLines = null;
+        int currentClock = -1;
+        Set<String> finishedProcesses = new LinkedHashSet<String>();
+
+        for (String line : lines) {
+            if (line.startsWith(">>> CLOCK:")) {
+                if (currentLines != null) {
+                    frames.add(parseFrame(currentClock, currentLines, finishedProcesses));
+                }
+                currentClock = extractClock(line);
+                currentLines = new ArrayList<String>();
+            }
+
+            if (currentLines != null) {
+                currentLines.add(line);
+            }
+        }
+
+        if (currentLines != null) {
+            frames.add(parseFrame(currentClock, currentLines, finishedProcesses));
+        }
+
+        if (frames.isEmpty()) {
+            clearFrameViews();
+            return;
+        }
+
+        currentFrameIndex = 0;
+        showFrame(0);
+    }
+
+    private ClockFrame parseFrame(int clock, List<String> lines, Set<String> finishedProcesses) {
+        ClockFrame frame = new ClockFrame();
+        frame.clock = clock;
+        frame.fullTrace = joinLines(lines);
+
+        List<String> queueLines = new ArrayList<String>();
+        List<String> blockedLines = new ArrayList<String>();
+        List<String> swapLines = new ArrayList<String>();
+        List<String> memoryLines = new ArrayList<String>();
+        boolean inMemorySection = false;
+
+        for (String line : lines) {
+            if (line.startsWith("[SYSTEM] P")) {
+                String processName = extractProcessName(line);
+                if (processName != null) {
+                    finishedProcesses.add(processName);
+                }
+            }
+
+            if (line.startsWith("READY Queue:") || line.startsWith("RQ")) {
+                queueLines.add(line);
+            }
+            if (line.startsWith("BLOCKED Queue:") || line.startsWith("FILE Blocked:")
+                    || line.startsWith("USER INPUT Blocked:") || line.startsWith("USER OUTPUT Blocked:")) {
+                blockedLines.add(line);
+            }
+            if (line.startsWith("RUNNING:")) {
+                frame.runningProcess = line.substring("RUNNING:".length()).trim();
+            }
+            if (line.startsWith("[SWAP]") || line.startsWith("[DISK]")) {
+                swapLines.add(line);
+            }
+            if (line.startsWith("------ MEMORY ------")) {
+                inMemorySection = true;
+                continue;
+            }
+            if (inMemorySection) {
+                if (line.trim().isEmpty()) {
+                    inMemorySection = false;
+                } else {
+                    memoryLines.add(line);
+                }
+            }
+        }
+
+        frame.readyQueues = queueLines.isEmpty() ? "No queue snapshot yet." : joinLines(queueLines);
+        frame.blockedQueues = blockedLines.isEmpty() ? "No blocked processes." : joinLines(blockedLines);
+        frame.swapActivity = swapLines.isEmpty() ? "No swap or disk activity in this clock." : joinLines(swapLines);
+        frame.memorySnapshot = memoryLines.isEmpty() ? "No memory snapshot captured yet." : joinLines(memoryLines);
+        frame.processStates = deriveProcessStates(frame, finishedProcesses);
+        return frame;
+    }
+
+    private Map<String, String> deriveProcessStates(ClockFrame frame, Set<String> finishedProcesses) {
+        Map<String, String> states = new LinkedHashMap<String, String>();
+        List<String> readyProcesses = extractProcesses(frame.readyQueues);
+        List<String> blockedProcesses = extractProcesses(frame.blockedQueues);
+
+        for (String processName : Arrays.asList("P1", "P2", "P3")) {
+            String state = "NOT ARRIVED";
+            if (finishedProcesses.contains(processName)) {
+                state = "FINISHED";
+            } else if (processName.equals(frame.runningProcess)) {
+                state = "RUNNING";
+            } else if (blockedProcesses.contains(processName)) {
+                state = "BLOCKED";
+            } else if (readyProcesses.contains(processName)) {
+                state = "READY";
+            }
+            states.put(processName, state);
+        }
+
+        return states;
+    }
+
+    private List<String> extractProcesses(String text) {
+        List<String> processes = new ArrayList<String>();
+        if (text == null) {
+            return processes;
+        }
+
+        for (String token : text.split("[^A-Za-z0-9]+")) {
+            if (token.matches("P[123]") && !processes.contains(token)) {
+                processes.add(token);
+            }
+        }
+        return processes;
+    }
+
+    private int extractClock(String line) {
+        String digits = line.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) {
+            return -1;
+        }
+        return Integer.parseInt(digits);
+    }
+
+    private String extractProcessName(String line) {
+        for (String token : line.split("[^A-Za-z0-9]+")) {
+            if (token.matches("P[123]")) {
+                return token;
+            }
+        }
+        return null;
+    }
+
+    private String joinLines(List<String> lines) {
+        StringBuilder builder = new StringBuilder();
+        for (String line : lines) {
+            if (builder.length() > 0) {
+                builder.append("\n");
+            }
+            builder.append(line);
+        }
+        return builder.toString();
+    }
+
+    private void showFrame(int index) {
+        if (index < 0 || index >= frames.size()) {
+            return;
+        }
+
+        currentFrameIndex = index;
+        ClockFrame frame = frames.get(index);
+        currentClockValue.setText(frame.clock >= 0 ? String.valueOf(frame.clock) : "N/A");
+        runningProcessValue.setText(frame.runningProcess == null || frame.runningProcess.isEmpty() ? "None" : frame.runningProcess);
+        readyQueueArea.setText(frame.readyQueues);
+        blockedQueueArea.setText(frame.blockedQueues);
+        swapArea.setText(frame.swapActivity);
+        memoryFrameArea.setText(frame.memorySnapshot);
+        frameTraceArea.setText(frame.fullTrace);
+        frameTraceArea.setCaretPosition(0);
+
+        for (Map.Entry<String, JLabel> entry : processStateLabels.entrySet()) {
+            String state = frame.processStates.containsKey(entry.getKey()) ? frame.processStates.get(entry.getKey()) : "NOT ARRIVED";
+            entry.getValue().setText(state);
+            applyStateStyle(entry.getValue(), state);
+        }
+
+        previousStepButton.setEnabled(index > 0);
+        nextStepButton.setEnabled(index < frames.size() - 1);
+        resetViewButton.setEnabled(!frames.isEmpty());
+    }
+
+    private void clearFrameViews() {
+        frames.clear();
+        currentFrameIndex = -1;
+        currentClockValue.setText("Not started");
+        runningProcessValue.setText("None");
+        readyQueueArea.setText("Run a simulation to see the ready queues.");
+        blockedQueueArea.setText("Run a simulation to see blocked queues and resource ownership.");
+        swapArea.setText("Swap and disk activity will appear here.");
+        memoryFrameArea.setText("Memory contents for the selected clock will appear here.");
+        frameTraceArea.setText("Use Run Simulation, then play or step through clocks.");
+        for (Map.Entry<String, JLabel> entry : processStateLabels.entrySet()) {
+            entry.getValue().setText("NOT ARRIVED");
+            applyStateStyle(entry.getValue(), "NOT ARRIVED");
+        }
+        previousStepButton.setEnabled(false);
+        nextStepButton.setEnabled(false);
+        resetViewButton.setEnabled(false);
+        playPauseButton.setText("Play");
+    }
+
+    private void applyStateStyle(JLabel label, String state) {
+        if ("RUNNING".equals(state)) {
+            label.setBackground(new Color(204, 241, 210));
+            label.setForeground(new Color(23, 92, 40));
+        } else if ("READY".equals(state)) {
+            label.setBackground(new Color(247, 235, 189));
+            label.setForeground(new Color(107, 76, 10));
+        } else if ("BLOCKED".equals(state)) {
+            label.setBackground(new Color(245, 208, 208));
+            label.setForeground(new Color(131, 33, 33));
+        } else if ("FINISHED".equals(state)) {
+            label.setBackground(new Color(210, 223, 245));
+            label.setForeground(new Color(30, 63, 117));
+        } else {
+            label.setBackground(new Color(232, 228, 220));
+            label.setForeground(MUTED);
+        }
+    }
+
+    private void togglePlayback() {
+        if (frames.isEmpty()) {
+            return;
+        }
+        if (playbackTimer.isRunning()) {
+            stopPlayback();
+        } else {
+            playbackTimer.start();
+            playPauseButton.setText("Pause");
+        }
+    }
+
+    private void stopPlayback() {
+        if (playbackTimer != null && playbackTimer.isRunning()) {
+            playbackTimer.stop();
+        }
+        playPauseButton.setText("Play");
+    }
+
+    private void advanceFrame() {
+        if (currentFrameIndex < frames.size() - 1) {
+            showFrame(currentFrameIndex + 1);
+        } else {
+            stopPlayback();
+        }
+    }
+
+    private void stepForward() {
+        stopPlayback();
+        if (currentFrameIndex < frames.size() - 1) {
+            showFrame(currentFrameIndex + 1);
+        }
+    }
+
+    private void stepBackward() {
+        stopPlayback();
+        if (currentFrameIndex > 0) {
+            showFrame(currentFrameIndex - 1);
+        }
+    }
+
+    private void resetFrameView() {
+        stopPlayback();
+        if (!frames.isEmpty()) {
+            showFrame(0);
+        }
+    }
+
     private String buildGuideText() {
         return
                 "GUC OPERATING SYSTEMS PROJECT - EVALUATION GUIDE\n\n" +
@@ -703,7 +1131,9 @@ public class SimulatorGUI extends JFrame {
                 "4. Mutual exclusion over userInput, userOutput, and file resources.\n" +
                 "5. Scheduling using HRRN, Round Robin, or MLFQ.\n" +
                 "6. Swapping processes to disk when memory is full.\n" +
-                "7. Human-readable tracing of queues, running process, instruction, and memory state.\n\n" +
+                "7. Human-readable tracing of queues, running process, instruction, and memory state.\n" +
+                "8. Visual display of ready queues, blocked queues, running process, process states, memory, and swap activity.\n" +
+                "9. Clock-by-clock playback with play, pause, previous-step, next-step, and reset controls.\n\n" +
                 "Recommended Demo Flow\n" +
                 "- First click 'Load HRRN Demo' for the cleanest baseline walkthrough.\n" +
                 "- Keep Scheduler on HRRN for the cleanest first explanation.\n" +
@@ -717,6 +1147,10 @@ public class SimulatorGUI extends JFrame {
                 "- Load HRRN Demo: fills the fields with a clean end-to-end scenario using HRRN.\n" +
                 "- Load RR Demo: switches to Round Robin with quantum 2 and fills values that make context switching easy to see.\n" +
                 "- Load MLFQ Demo: switches to MLFQ and fills a ready-made scenario that shows queue demotion, preemption, swapping, and final file output.\n" +
+                "- Play: automatically advances through recorded clock frames after a run.\n" +
+                "- Pause: stops automatic playback on the current clock frame.\n" +
+                "- Previous Step / Next Step: move one clock at a time through execution.\n" +
+                "- Reset View: returns the visual clock view to the first captured frame.\n" +
                 "- Clear Output: clears the log window and resets the summary cards visually.\n" +
                 "- Team Windows XP tab: shows the team members in a more presentation-friendly style.\n\n" +
                 "Scheduler Inputs\n" +
@@ -796,6 +1230,17 @@ public class SimulatorGUI extends JFrame {
             }
         } catch (Exception ignored) {
         }
+    }
+
+    private static class ClockFrame {
+        int clock;
+        String readyQueues;
+        String blockedQueues;
+        String runningProcess;
+        String swapActivity;
+        String memorySnapshot;
+        String fullTrace;
+        Map<String, String> processStates;
     }
 
     public static void main(String[] args) {
