@@ -326,7 +326,8 @@ public class Main {
             if (algorithm == Scheduler.Algorithm.RR) {
                 enqueueIfAbsent(rrReadyQueue, process);
             } else if (algorithm == Scheduler.Algorithm.MLFQ) {
-                Scheduler.enqueueMLFQ(process, mlfqQueues, process.pcb.mlfqLevel);
+                // Blocked processes re-enter MLFQ at the highest priority queue.
+                Scheduler.enqueueMLFQ(process, mlfqQueues, 0);
             }
         }
     }
